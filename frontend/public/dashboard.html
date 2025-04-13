@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+</head>
+<body class="container mt-5">
+  <h2>Dashboard</h2>
+  <button class="btn btn-primary my-2" onclick="createConnection()">Create Connection</button>
+  <div id="codeArea" class="alert alert-info d-none"></div>
+
+  <hr>
+
+  <h4>Connect to Another Device</h4>
+  <form id="connectForm">
+    <input class="form-control my-2" type="text" placeholder="Enter Code" name="code" required>
+    <button class="btn btn-success">Connect</button>
+  </form>
+
+  <hr>
+
+  <h4>📍 Location History</h4>
+  <div id="map" style="height: 400px;"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <script>
+    const userId = localStorage.getItem("userId");
+    const socket = io();
+
+    async function createConnection() {
+      const res = await fetch('/api/device/create', {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId })
+      });
+      const json = await res.json();
+      const div = document.getElementById('codeArea');
+      div.classList.remove("d-none");
+      div.innerText = `Share this code to connect: ${json.deviceCode}`;
+    }
+
+    document.getElementById("connectForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const code = e.target.code.value;
+      const res = await fetch('/api/device/connect', {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceCode: code, connectedDeviceId: userId })
+      });
+      if (res.ok) {
+        alert("Connected to device!");
+        loadHistory(code);
+      } else alert("Invalid code");
+    };
+
+    async function loadHistory(code) {
+      const res = await fetch(`/api/device/history/${code}`);
+      const data = await res.json();
+
+      const map = L.map('map').setView([0, 0], 2);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+      data.forEach(loc => {
+        const marker = L.marker([loc.lat, loc.lng]).addTo(map);
+        marker.bindPopup(`Tracked at: ${new Date(loc.timestamp).toLocaleString()}`);
+      });
+
+      if (data.length) {
+        const last = data[data.length - 1];
+        map.setView([last.lat, last.lng], 13);
+      }
+    }
+
+    socket.on('locationUpdate', (data) => {
+      console.log("Real-time update:", data);
+    });
+  </script>
+</body>
+</html>
